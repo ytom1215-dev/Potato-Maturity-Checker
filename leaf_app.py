@@ -1,10 +1,11 @@
 import streamlit as st
 import os
+import random # ランダム機能を追加
 
 # ==========================================
 # 0. アプリの基本設定とカスタムCSS
 # ==========================================
-st.set_page_config(page_title="ジャガイモ黄化度判定トレーニング", page_icon="🥔", layout="centered")
+st.set_page_config(page_title="Potato Maturity Checker", page_icon="🥔", layout="centered")
 
 st.markdown("""
     <style>
@@ -16,17 +17,10 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Streamlitのバージョン差異吸収関数
-def safe_rerun():
-    if hasattr(st, "rerun"):
-        st.rerun()
-    else:
-        st.experimental_rerun()
-
 # ==========================================
-# 1. 研修用データの設定 (全12枚)
+# 1. 研修用データの設定 (全12枚のベースデータ)
 # ==========================================
-expert_data =[
+expert_data = [
     {"image_file": "p1.jpg", "true_score": 1, "explanation": "【指標 Ⅰ】黄変なし。葉は完全に緑色を呈しており、健全な状態です。"},
     {"image_file": "p2.jpg", "true_score": 2, "explanation": "【指標 Ⅱ】下葉がわずかに黄変。初期の生理的変化またはストレスサインです。"},
     {"image_file": "p3.jpg", "true_score": 3, "explanation": "【指標 Ⅲ】葉の約1/3が黄変。中程度の症状が認められます。"},
@@ -46,7 +40,7 @@ romans = ["Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ"]
 score_map = {"Ⅰ": 1, "Ⅱ": 2, "Ⅲ": 3, "Ⅳ": 4, "Ⅴ": 5, "Ⅵ": 6}
 
 # ==========================================
-# 2. セッションステート初期化
+# 2. セッションステート初期化（ここでランダム化！）
 # ==========================================
 if 'current_idx' not in st.session_state:
     st.session_state.current_idx = 0
@@ -54,33 +48,33 @@ if 'current_idx' not in st.session_state:
     st.session_state.correct_count = 0
     st.session_state.finished = False
     st.session_state.user_score_val = 1
+    
+    # 初回起動時にリストをシャッフルして記憶させる
+    shuffled = expert_data.copy()
+    random.shuffle(shuffled)
+    st.session_state.shuffled_data = shuffled
 
 # ==========================================
-# 3. UIの構築 (Web・スマホ向けの縦並びレイアウト)
+# 3. UIの構築
 # ==========================================
-st.title("🥔 ジャガイモ黄化度判定研修")
+st.title("🥔 Potato Maturity Checker")
 st.markdown("---")
 
 if not st.session_state.finished:
     st.markdown(f"### 画像: {st.session_state.current_idx + 1} / {total_q}")
     
-    # 画像の読み込みと表示（強制的に横幅を350pxに制限して小さく表示）
-    try:
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-    except NameError:
-        current_dir = os.getcwd()
-        
-    img_filename = expert_data[st.session_state.current_idx]["image_file"]
+    # ★ここから下は、シャッフルされたデータ（shuffled_data）を使います
+    current_data = st.session_state.shuffled_data[st.session_state.current_idx]
+    
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    img_filename = current_data["image_file"]
     img_path = os.path.join(current_dir, img_filename)
 
     if os.path.exists(img_path):
         st.image(img_path, width=350)
     else:
-        st.warning(f"画像が見つかりません: {img_filename} を同じフォルダに配置してください。")
-        # 画像がない場合でもテストできるようにダミー画像を表示します
-        st.image(f"https://placehold.co/350x250/eeeeee/999999?text=Image+{st.session_state.current_idx + 1}", width=350)
+        st.warning(f"画像が見つかりません: {img_filename} を配置してください。")
 
-    # ユーザー入力
     user_choice = st.radio(
         "判定スコアを選択:", 
         options=list(score_map.keys()),
@@ -89,19 +83,17 @@ if not st.session_state.finished:
         key=f"q_{st.session_state.current_idx}"
     )
     
-    # 判定ボタン
     if not st.session_state.has_answered:
         if st.button("判定を確定する", type="primary", use_container_width=True):
             st.session_state.user_score_val = score_map[user_choice]
-            true_val = expert_data[st.session_state.current_idx]["true_score"]
+            true_val = current_data["true_score"]
             if st.session_state.user_score_val == true_val:
                 st.session_state.correct_count += 1
             st.session_state.has_answered = True
-            safe_rerun()
+            st.rerun()
     
-    # 次へボタンとフィードバック
     else:
-        true_val = expert_data[st.session_state.current_idx]["true_score"]
+        true_val = current_data["true_score"]
         diff = abs(st.session_state.user_score_val - true_val)
         
         if diff == 0:
@@ -111,12 +103,11 @@ if not st.session_state.finished:
         else:
             status_class, res_msg = "incorrect", "❌ 不正解"
             
-        explanation = expert_data[st.session_state.current_idx]["explanation"]
+        explanation = current_data["explanation"]
         
         st.markdown(f"""
         <div class="feedback-box {status_class}">
             <h3 style="margin-top:0;">{res_msg}</h3>
-            <p><b>あなたの判定:</b> {romans[st.session_state.user_score_val - 1]}</p>
             <p><b>熟練者の判定:</b> {romans[true_val - 1]}</p>
             <p><b>リファレンス解説:</b> {explanation}</p>
         </div>
@@ -130,9 +121,8 @@ if not st.session_state.finished:
                 st.session_state.has_answered = False
             else:
                 st.session_state.finished = True
-            safe_rerun()
+            st.rerun()
 
-    # リファレンス表示
     st.markdown("""
     <div class="ref-table">
         <b>【リファレンス指標】</b><br>
@@ -141,7 +131,6 @@ if not st.session_state.finished:
     """, unsafe_allow_html=True)
 
 else:
-    # 最終結果表示
     perc = round((st.session_state.correct_count / total_q) * 100, 1)
     st.markdown(f"""
     <div style="text-align:center; padding:30px; background:white; border-radius:15px; border:1px solid #ddd;">
@@ -159,9 +148,9 @@ else:
         st.session_state.correct_count = 0
         st.session_state.finished = False
         
-        # セッションに残っている過去の選択状態(q_0 ~ q_11)をクリアする
-        for key in list(st.session_state.keys()):
-            if key.startswith("q_"):
-                del st.session_state[key]
-                
-        safe_rerun()
+        # もう一度受けるときに、再びシャッフルし直す！
+        shuffled = expert_data.copy()
+        random.shuffle(shuffled)
+        st.session_state.shuffled_data = shuffled
+        
+        st.rerun()
